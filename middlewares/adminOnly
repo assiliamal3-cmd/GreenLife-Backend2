@@ -1,0 +1,26 @@
+module.exports = function adminOnly(req, res, next) {
+  try {
+    // vérification que l'utilisateur existe (vient de authMiddleware)
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Non authentifié",
+      });
+    }
+
+    // vérification du rôle admin
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        message: "Accès refusé : admin uniquement",
+      });
+    }
+
+    // OK → continuer
+    next();
+  } catch (error) {
+    console.error("ADMIN MIDDLEWARE ERROR:", error.message);
+
+    return res.status(500).json({
+      message: "Erreur serveur (admin middleware)",
+    });
+  }
+};
