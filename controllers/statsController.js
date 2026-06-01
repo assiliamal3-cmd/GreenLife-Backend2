@@ -1,11 +1,10 @@
 const User = require("../models/User");
 const Releve = require("../models/Releve");
-const Notification = require("../models/Notification");
 const os = require("os");
 
 exports.getStats = async (req, res) => {
   try {
-    const [users, releves, notifications] = await Promise.all([
+    const [users] = await Promise.all([
       User.countDocuments(),
       Releve.countDocuments(),
       Notification.countDocuments(),
@@ -13,8 +12,7 @@ exports.getStats = async (req, res) => {
 
     res.json({
       users,
-      releves,
-      notifications,
+    
       cpuUsage: Math.round((os.loadavg()[0] / os.cpus().length) * 100),
       memoryUsage: Math.round(((os.totalmem() - os.freemem()) / os.totalmem()) * 100),
       uptime: Math.round(os.uptime() / 60),

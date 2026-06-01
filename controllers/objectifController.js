@@ -5,19 +5,47 @@ const Consommation = require("../models/Consommation");
 exports.getObjectifs = async (req, res) => {
   try {
     const objectifs = await Objectif.find({ user: req.user._id }).lean();
+   const monthParam = req.query.month;
+
+let startOfMonth, endOfMonth;
+
+if (monthParam) {
+  const [year, month] = monthParam.split("-");
+  startOfMonth = new Date(year, month - 1, 1);
+  endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+} else {
+  const now = new Date();
+  startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+}
 
     const result = await Promise.all(
       objectifs.map(async (obj) => {
-        const data = await Consommation.find({
-          user: req.user._id,
-          type: obj.type,
-        }).lean();
+        
+
+const data = await Consommation.find({
+  user: req.user._id,
+  type: obj.type,
+  date: {
+    $gte: startOfMonth,
+    $lte: endOfMonth,
+  },
+}).lean();
+
 
         const total = data.reduce((sum, c) => sum + (c.valeur || 0), 0);
 
-        const progress = obj.target
-          ? Math.min(Math.round((total / obj.target) * 100), 100)
-          : 0;
+        const progress = obj.target > 0
+  ? Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(
+          (total / obj.target) * 100
+        )
+      )
+    )
+  : 0;
 
         return {
           ...obj,

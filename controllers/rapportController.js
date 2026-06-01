@@ -4,10 +4,18 @@ const User = require("../models/User");
 const PDFDocument = require("pdfkit");
 const { Parser } = require("json2csv");
 const { ChartJSNodeCanvas } = require("chartjs-node-canvas");
+const calculateEcoScore = require("../utils/calculateEcoScore");
 
 const sendReportMail = require("../services/emailService");
 
 const { PassThrough } = require("stream");
+const path = require("path");
+const fs = require("fs");
+const logoPath = path.join(
+  __dirname,
+  "../assets/logo.png"
+);
+
 
 // ======================================================
 // CONFIG DESIGN
@@ -47,22 +55,7 @@ const formatDate = (date) =>
     }
   );
 
-const calculateScore = (
-  energie,
-  eau,
-  dechets
-) => {
-  const raw =
-    100 -
-    (energie * 0.05 +
-      eau * 0.03 +
-      dechets * 0.1);
 
-  return Math.max(
-    0,
-    Math.min(100, Math.round(raw))
-  );
-};
 
 const getEcoLevel = (score) => {
   if (score >= 80)
@@ -121,19 +114,19 @@ const generateRecommendations = ({
 
   dechets > 100
     ? r.push(
-        "♻️ Améliorer tri",
-        "🛍️ Réduire plastique"
+        " Améliorer tri",
+        " Réduire plastique"
       )
     : r.push("✅ Déchets OK");
 
   score < 40
-    ? r.push("🚨 Impact critique")
+    ? r.push(" Impact critique")
     : score < 70
     ? r.push(
-        "⚠️ Améliorations nécessaires"
+        " Améliorations nécessaires"
       )
     : r.push(
-        "🌱 Excellent comportement"
+        " Excellent comportement"
       );
 
   return r;
@@ -181,70 +174,152 @@ const buildMonthlyStats = (data) => {
 // CHART
 // ======================================================
 
-const generateChart = async (
-  stats
-) => {
+const generateChart = async (stats) => {
   const config = {
     type: "line",
 
     data: {
-      labels: stats.map(
-        (s) => s.month
-      ),
+      labels: stats.map((s) => s.month),
 
       datasets: [
         {
-          label: "Énergie",
+          label: " Énergie",
+          data: stats.map((s) => s.energie),
 
-          data: stats.map(
-            (s) => s.energie
-          ),
+          borderColor: COLORS.primary,
+          backgroundColor: "rgba(22,163,74,0.20)",
 
-          borderColor:
+          borderWidth: 4,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+
+          fill: true,
+          tension: 0.45,
+        },
+
+        {
+          label: " Eau",
+          data: stats.map((s) => s.eau),
+
+          borderColor: COLORS.secondary,
+          backgroundColor: "rgba(37,99,235,0.20)",
+
+          borderWidth: 4,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+
+          fill: true,
+          tension: 0.45,
+        },
+
+        {
+          label: " Déchets",
+          data: stats.map((s) => s.dechets),
+
+          borderColor: COLORS.warning,
+          backgroundColor: "rgba(245,158,11,0.20)",
+
+          borderWidth: 4,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+
+          fill: true,
+          tension: 0.45,
+        },
+      ],
+    },
+
+    options: {
+      responsive: true,
+
+      plugins: {
+        legend: {
+          position: "top",
+
+          labels: {
+            font: {
+              size: 16,
+              weight: "bold",
+            },
+
+            padding: 20,
+          },
+        },
+
+        title: {
+          display: true,
+          text: "Évolution des consommations",
+          font: {
+            size: 22,
+            weight: "bold",
+          },
+        },
+      },
+
+      scales: {
+        x: {
+          grid: {
+            display: false,
+          },
+
+          ticks: {
+            font: {
+              size: 12,
+            },
+          },
+        },
+
+        y: {
+          beginAtZero: true,
+
+          grid: {
+            color: "#e5e7eb",
+          },
+
+          ticks: {
+            font: {
+              size: 12,
+            },
+          },
+        },
+      },
+    },
+  };
+
+  return await chartJSNodeCanvas.renderToBuffer(config);
+};
+//
+const generatePieChart = async (
+  energie,
+  eau,
+  dechets
+) => {
+  const config = {
+    type: "doughnut",
+
+    data: {
+      labels: [
+        "Énergie",
+        "Eau",
+        "Déchets",
+      ],
+
+      datasets: [
+        {
+          data: [
+            energie,
+            eau,
+            dechets,
+          ],
+
+          backgroundColor: [
             COLORS.primary,
-
-          backgroundColor:
-            "rgba(22,163,74,0.15)",
-
-          fill: true,
-
-          tension: 0.4,
-        },
-
-        {
-          label: "Eau",
-
-          data: stats.map(
-            (s) => s.eau
-          ),
-
-          borderColor:
             COLORS.secondary,
-
-          backgroundColor:
-            "rgba(37,99,235,0.15)",
-
-          fill: true,
-
-          tension: 0.4,
-        },
-
-        {
-          label: "Déchets",
-
-          data: stats.map(
-            (s) => s.dechets
-          ),
-
-          borderColor:
             COLORS.warning,
+          ],
 
-          backgroundColor:
-            "rgba(245,158,11,0.15)",
-
-          fill: true,
-
-          tension: 0.4,
+          borderWidth: 3,
+          borderColor: "#ffffff",
         },
       ],
     },
@@ -252,21 +327,31 @@ const generateChart = async (
     options: {
       plugins: {
         legend: {
-          position: "top",
+          position: "bottom",
+
+          labels: {
+            font: {
+              size: 14,
+              weight: "bold",
+            },
+          },
+        },
+
+        title: {
+          display: true,
+          text: "Répartition des consommations",
+          font: {
+            size: 20,
+            weight: "bold",
+          },
         },
       },
 
-      scales: {
-        y: {
-          beginAtZero: true,
-        },
-      },
+      cutout: "65%",
     },
   };
 
-  return await chartJSNodeCanvas.renderToBuffer(
-    config
-  );
+  return await chartJSNodeCanvas.renderToBuffer(config);
 };
 
 // ======================================================
@@ -292,32 +377,42 @@ const drawStatCard = (
       y,
       width,
       height,
-      12
+      18
     )
     .fill("#ffffff");
 
   doc
-    .rect(x, y, 6, height)
+    .roundedRect(
+      x,
+      y,
+      width,
+      8,
+      18
+    )
     .fill(color);
+
+  doc
+    .fillColor(color)
+    .fontSize(20)
+    .text(icon, x + 15, y + 12);
 
   doc
     .fillColor(COLORS.gray)
     .fontSize(11)
-    .font("Helvetica")
     .text(
-      `${icon} ${title}`,
+      title,
       x + 15,
-      y + 12
+      y + 42
     );
 
   doc
     .fillColor(COLORS.dark)
-    .fontSize(20)
+    .fontSize(22)
     .font("Helvetica-Bold")
     .text(
-      value.toFixed(1),
+      Number(value).toLocaleString(),
       x + 15,
-      y + 38
+      y + 62
     );
 };
 
@@ -332,13 +427,19 @@ exports.generatePDF = async (
   try {
     const userId = req.user.id;
 
-    const user =
-      await User.findById(userId);
+const user =
+  await User.findById(userId);
 
-    const data =
-      await Consommation.find({
-        user: userId,
-      }).sort({ date: 1 });
+if (!user) {
+  return res.status(404).json({
+    message: "Utilisateur introuvable",
+  });
+}
+
+const data =
+  await Consommation.find({
+    user: userId,
+  }).sort({ date: 1 });
 
     let energie = 0;
     let eau = 0;
@@ -364,11 +465,15 @@ exports.generatePDF = async (
         dechets += v;
     });
 
-    const score = calculateScore(
-      energie,
-      eau,
-      dechets
-    );
+  const result = await calculateEcoScore(userId);
+
+const score = Number(result?.score || 0);
+
+energie = Number(result?.energie || energie);
+eau = Number(result?.eau || eau);
+dechets = Number(result?.dechets || dechets);
+
+console.log("EcoScore:", score);
 
     const ecoLevel =
       getEcoLevel(score);
@@ -382,9 +487,16 @@ exports.generatePDF = async (
       });
 
     const chart =
-      await generateChart(
-        buildMonthlyStats(data)
-      );
+  await generateChart(
+    buildMonthlyStats(data)
+  );
+
+const pieChart =
+  await generatePieChart(
+    energie,
+    eau,
+    dechets
+  );
 
     const doc = new PDFDocument({
       margin: 40,
@@ -436,6 +548,12 @@ exports.generatePDF = async (
               },
             ]
           );
+          await createNotification(
+  user._id,
+  "📄 Rapport généré",
+  "Votre rapport écologique a été généré et envoyé par email avec succès.",
+  "success"
+);
 
           res.status(200).json({
             success: true,
@@ -454,38 +572,56 @@ exports.generatePDF = async (
       }
     );
 
+
     // ======================================================
     // HEADER
     // ======================================================
 
     doc
-      .rect(0, 0, 700, 140)
-      .fill(COLORS.primary);
+  .rect(0, 0, 700, 180)
+  .fill("#0f172a");
 
-    doc
-      .fillColor("white")
-      .fontSize(32)
-      .font("Helvetica-Bold")
-      .text("GREENLIFE", 40, 30);
+if (fs.existsSync(logoPath)) {
+  doc.image(
+    logoPath,
+    420,
+    20,
+    {
+      width: 100,
+    }
+  );
+}
 
-    doc
-      .fontSize(14)
-      .font("Helvetica")
-      .text(
-        "Rapport écologique intelligent",
-        40,
-        75
-      );
+doc
+  .fillColor("#22c55e")
+  .fontSize(34)
+  .font("Helvetica-Bold")
+  .text(
+    "GREENLIFE",
+    40,
+    40
+  );
 
-    doc
-      .fontSize(10)
-      .text(
-        `Généré le ${formatDate(
-          new Date()
-        )}`,
-        40,
-        100
-      );
+doc
+  .fillColor("white")
+  .fontSize(18)
+  .font("Helvetica")
+  .text(
+    "Rapport écologique intelligent",
+    40,
+    90
+  );
+
+doc
+  .fillColor("#d1d5db")
+  .fontSize(12)
+  .text(
+    `Généré le ${formatDate(
+      new Date()
+    )}`,
+    40,
+    125
+  );
 
     // ======================================================
     // USER CARD
@@ -493,22 +629,23 @@ exports.generatePDF = async (
 
     doc
       .roundedRect(
-        40,
-        160,
-        515,
-        90
-      )
-      .fill("#ffffff");
+  40,
+  200,
+  515,
+  90,
+  15
+)
+.fill("#ffffff");
 
     doc
       .fillColor(COLORS.dark)
       .fontSize(16)
       .font("Helvetica-Bold")
       .text(
-        "👤 Utilisateur",
-        60,
-        175
-      );
+  "Utilisateur",
+  60,
+  215
+);
 
     doc
       .fontSize(12)
@@ -520,49 +657,56 @@ exports.generatePDF = async (
       );
 
     doc.text(
-      `Consommations: ${data.length}`,
-      300,
-      205
-    );
+  `Consommations : ${data.length}`,
+  300,
+  245
+);
 
     // ======================================================
     // SCORE CARD
     // ======================================================
 
     doc
-      .roundedRect(
-        40,
-        270,
-        515,
-        120
-      )
-      .fill(ecoLevel.color);
+  .fillColor("white")
+  .fontSize(20)
+  .font("Helvetica-Bold")
+  .text(
+    "Score écologique",
+    60,
+    340
+  );
 
-    doc
-      .fillColor("white")
-      .fontSize(20)
-      .font("Helvetica-Bold")
-      .text(
-        `${ecoLevel.emoji} Score écologique`,
-        60,
-        290
-      );
+doc
+  .circle(120, 400, 45)
+  .fill("#ffffff");
 
-    doc
-      .fontSize(50)
-      .text(`${score}`, 60, 325);
+doc
+  .fillColor(ecoLevel.color)
+  .fontSize(28)
+  .font("Helvetica-Bold")
+  .text(
+    String(score),
+    102,
+    388
+  );
 
-    doc
-      .fontSize(18)
-      .text("/100", 150, 340);
+doc
+  .fontSize(10)
+  .text(
+    "/100",
+    108,
+    418
+  );
 
-    doc
-      .fontSize(16)
-      .text(
-        `Niveau: ${ecoLevel.label}`,
-        350,
-        335
-      );
+doc
+  .fillColor("white")
+  .fontSize(18)
+  .font("Helvetica-Bold")
+  .text(
+    `Niveau : ${ecoLevel.label}`,
+    220,
+    390
+  );
 
     // ======================================================
     // STATS
@@ -573,14 +717,14 @@ exports.generatePDF = async (
       .fontSize(20)
       .font("Helvetica-Bold")
       .text(
-        "📊 Analyse globale",
-        40,
-        420
-      );
+  "Analyse globale",
+  40,
+  500
+);
 
     drawStatCard(doc, {
       x: 40,
-      y: 460,
+      y: 540,
       width: 155,
       height: 90,
       title: "Énergie",
@@ -591,7 +735,7 @@ exports.generatePDF = async (
 
     drawStatCard(doc, {
       x: 215,
-      y: 460,
+      y: 540,
       width: 155,
       height: 90,
       title: "Eau",
@@ -602,7 +746,7 @@ exports.generatePDF = async (
 
     drawStatCard(doc, {
       x: 390,
-      y: 460,
+      y: 540,
       width: 155,
       height: 90,
       title: "Déchets",
@@ -617,23 +761,69 @@ exports.generatePDF = async (
 
     doc
       .roundedRect(
-        40,
-        580,
-        515,
-        60
-      )
+  40,
+  670,
+  515,
+  70,
+  15
+)
       .fill("#ecfdf5");
 
     doc
       .fillColor(COLORS.primary)
       .fontSize(18)
       .text(
-        `💰 Total: ${totalCost.toFixed(
-          2
-        )} DT`,
-        60,
-        600
-      );
+  `Total écologique : ${totalCost.toFixed(
+    2
+  )} DT`,
+  60,
+  695
+);
+// Resumé IA
+doc.addPage();
+
+doc
+  .fillColor(COLORS.dark)
+  .fontSize(24)
+  .font("Helvetica-Bold")
+  .text(
+    "Résumé écologique"
+  );
+
+doc.moveDown();
+
+doc
+  .fontSize(14)
+  .font("Helvetica")
+  .text(
+    `Score : ${score}/100`
+  );
+
+doc.moveDown();
+
+doc.text(
+  `Niveau : ${ecoLevel.label}`
+);
+
+doc.moveDown();
+
+doc.text(
+  `Consommation énergie : ${energie}`
+);
+
+doc.text(
+  `Consommation eau : ${eau}`
+);
+
+doc.text(
+  `Déchets : ${dechets}`
+);
+
+doc.moveDown();
+
+doc.text(
+  `Économie potentielle : ${(totalCost * 0.15).toFixed(2)} DT / mois`
+);
 
     // ======================================================
     // RECOMMANDATIONS
@@ -696,6 +886,32 @@ exports.generatePDF = async (
         align: "center",
       });
     }
+    //piechart
+    if (pieChart) {
+  doc.addPage();
+
+  doc
+    .fontSize(22)
+    .fillColor(COLORS.dark)
+    .text(
+      "📊 Répartition des consommations",
+      {
+        align: "center",
+      }
+    );
+
+  doc.moveDown(2);
+
+  doc.image(
+    pieChart,
+    50,
+    120,
+    {
+      fit: [500, 400],
+      align: "center",
+    }
+  );
+}
 
     // ======================================================
     // HISTORIQUE
@@ -711,52 +927,63 @@ exports.generatePDF = async (
     doc.moveDown();
 
     data.forEach((item) => {
-      const y = doc.y;
 
-      const color =
-        item.type === "energie"
-          ? COLORS.primary
-          : item.type === "eau"
-          ? COLORS.secondary
-          : COLORS.warning;
+  // Nouvelle page si plus assez de place
+  if (doc.y > 700) {
+    doc.addPage();
 
-      doc
-        .roundedRect(
-          40,
-          y,
-          515,
-          60
-        )
-        .fill("#ffffff");
+    doc
+      .fontSize(20)
+      .fillColor(COLORS.dark)
+      .text("📋 Historique (suite)");
 
-      doc
-        .fillColor(color)
-        .fontSize(12)
-        .text(
-          `${item.type}`,
-          55,
-          y + 10
-        );
+    doc.moveDown();
+  }
 
-      doc
-        .fillColor(COLORS.dark)
-        .fontSize(11)
-        .text(
-          `Valeur: ${item.valeur} | Coût: ${item.cout} DT`,
-          55,
-          y + 30
-        );
+  const y = doc.y;
 
-      doc.text(
-        `Date: ${formatDate(
-          item.date
-        )}`,
-        350,
-        y + 30
-      );
+  const color =
+    item.type === "energie"
+      ? COLORS.primary
+      : item.type === "eau"
+      ? COLORS.secondary
+      : COLORS.warning;
 
-      doc.moveDown(3);
-    });
+  doc
+    .roundedRect(
+      40,
+      y,
+      515,
+      60
+    )
+    .fill("#ffffff");
+
+  doc
+    .fillColor(color)
+    .fontSize(12)
+    .text(
+      item.type,
+      55,
+      y + 10
+    );
+
+  doc
+    .fillColor(COLORS.dark)
+    .fontSize(11)
+    .text(
+      `Valeur: ${item.valeur} | Coût: ${item.cout} DT`,
+      55,
+      y + 30
+    );
+
+  doc.text(
+    `Date: ${formatDate(item.date)}`,
+    350,
+    y + 30
+  );
+
+  doc.moveDown(3);
+});
 
     // ======================================================
     // FOOTER

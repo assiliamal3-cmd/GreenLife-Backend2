@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 
 const settingsSchema = new mongoose.Schema(
   {
+   
+
     siteName: {
       type: String,
       default: "GreenLife",
@@ -49,7 +51,7 @@ const settingsSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model(
-  "Settings",
-  settingsSchema
-);
+
+settingsSchema.index({ isGlobal: 1 }, { unique: true });
+
+module.exports = mongoose.model("Settings", settingsSchema);

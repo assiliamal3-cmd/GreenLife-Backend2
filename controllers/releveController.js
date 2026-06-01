@@ -10,9 +10,11 @@ exports.ajouterReleve = async (req, res) => {
       notes,
       tailleFoyer,
       appareil,
+      dateDebut,
+      dateFin,
+      repartitionMensuelle,
     } = req.body;
 
-    // 🔥 FIX important (FormData = string)
     valeur = parseFloat(valeur);
     cout = parseFloat(cout || 0);
     tailleFoyer = parseInt(tailleFoyer || 0);
@@ -24,45 +26,155 @@ exports.ajouterReleve = async (req, res) => {
       });
     }
 
-    if (!valeur || isNaN(valeur)) {
-      return res.status(400).json({
-        message: "Valeur invalide",
+    if (isNaN(valeur) || valeur < 0) {
+  return res.status(400).json({
+    message: "Valeur invalide",
+  });
+}
+
+    // ================= REPARTITION MENSUELLE =================
+    if (
+  repartitionMensuelle === "true" &&
+  dateDebut &&
+  dateFin
+) {
+      const debut = new Date(dateDebut);
+const fin = new Date(dateFin);
+
+if (fin < debut) {
+  return res.status(400).json({
+    message:
+      "La date de fin doit être supérieure à la date de début",
+  });
+}
+      const nbMois =
+        (fin.getFullYear() -
+          debut.getFullYear()) *
+          12 +
+        (fin.getMonth() -
+          debut.getMonth()) +
+        1;
+
+      const releves = [];
+
+      for (let i = 0; i < nbMois; i++) {
+        const currentDate = new Date(
+          debut.getFullYear(),
+          debut.getMonth() + i,
+          1
+        );
+        const existe =
+  await Consommation.findOne({
+    user: req.user.id,
+    type: type.toLowerCase(),
+    mois:
+      currentDate.getMonth() + 1,
+    annee:
+      currentDate.getFullYear(),
+  });
+
+if (existe) {
+  continue;
+}
+
+        const releve =
+          await Consommation.create({
+            user: req.user.id,
+            type: type.toLowerCase(),
+            valeur: Number(
+              (valeur / nbMois).toFixed(2)
+            ),
+            cout: Number(
+              (cout / nbMois).toFixed(2)
+            ),
+            notes: notes || "",
+            tailleFoyer,
+            appareil,
+            mois:
+              currentDate.getMonth() + 1,
+            annee:
+              currentDate.getFullYear(),
+               dateReference: currentDate,
+          });
+
+        releves.push(releve);
+      }
+
+      return res.status(201).json({
+        message:
+          "Relevés créés avec succès",
+        releves,
       });
     }
 
-    // ================= CREATE =================
-    const releve = await Consommation.create({
-      user: req.user.id,
-      type: type.toLowerCase(),
-      valeur,
-      cout,
-      notes: notes || "",
+    // ================= AJOUT NORMAL =================
+    const dateReference = dateDebut
+  ? new Date(dateDebut)
+  : new Date();
+  const existe = await Consommation.findOne({
+  user: req.user.id,
+  type: type.toLowerCase(),
+  mois: dateReference.getMonth() + 1,
+  annee: dateReference.getFullYear(),
+});
 
-      // ✅ NOUVEAUX CHAMPS
-      tailleFoyer,
-      appareil,
-    });
+if (existe) {
+  return res.status(400).json({
+    message:
+      "Un relevé existe déjà pour cette période",
+  });
+}
 
-    res.status(201).json({
-      message: "Relevé ajouté avec succès",
+const releve = await Consommation.create({
+  user: req.user.id,
+  type: type.toLowerCase(),
+  valeur,
+  cout,
+  notes: notes || "",
+  tailleFoyer,
+  appareil,
+
+  dateReference,
+
+  mois: dateReference.getMonth() + 1,
+  annee: dateReference.getFullYear(),
+});
+
+    return res.status(201).json({
+      message:
+        "Relevé ajouté avec succès",
       releve,
     });
 
   } catch (err) {
-    console.error("AJOUT RELEVE ERROR:", err);
 
-    res.status(500).json({
-      message: "Erreur serveur",
+  if (err.code === 11000) {
+    return res.status(400).json({
+      message:
+        "Un relevé existe déjà pour cette période",
     });
   }
+
+  console.error(
+  "UPDATE RELEVE ERROR:",
+  err
+);
+
+  return res.status(500).json({
+    message: "Erreur serveur",
+  });
+}
 };
+
+    // ================= VALIDATION =================
+   
 
 // ================= LISTE RELEVES =================
 exports.getReleves = async (req, res) => {
   try {
     const releves = await Consommation.find({
-      user: req.user.id,
-    }).sort({ createdAt: -1 });
+  user: req.user.id,
+}).sort({ dateReference: -1 });
 
     res.json(releves);
 
@@ -113,6 +225,17 @@ exports.updateReleve = async (req, res) => {
         message: "Relevé introuvable",
       });
     }
+    if (
+  req.body.valeur !== undefined &&
+  (
+    isNaN(req.body.valeur) ||
+    Number(req.body.valeur) < 0
+  )
+) {
+  return res.status(400).json({
+    message: "Valeur invalide",
+  });
+}
 
     if (req.body.type) {
       releve.type = req.body.type.toLowerCase();
@@ -139,6 +262,28 @@ exports.updateReleve = async (req, res) => {
     if (req.body.appareil !== undefined) {
       releve.appareil = req.body.appareil;
     }
+   if (req.body.dateDebut) {
+  const d = new Date(req.body.dateDebut);
+  const existe =
+  await Consommation.findOne({
+    _id: { $ne: releve._id },
+    user: req.user.id,
+    type: releve.type,
+    mois: d.getMonth() + 1,
+    annee: d.getFullYear(),
+  });
+
+if (existe) {
+  return res.status(400).json({
+    message:
+      "Un relevé existe déjà pour cette période",
+  });
+}
+
+  releve.dateReference = d;
+  releve.mois = d.getMonth() + 1;
+  releve.annee = d.getFullYear();
+}
 
     await releve.save();
 
@@ -148,12 +293,23 @@ exports.updateReleve = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("UPDATE ERROR:", err);
 
-    res.status(500).json({
-      message: "Erreur serveur",
+  if (err.code === 11000) {
+    return res.status(400).json({
+      message:
+        "Un relevé existe déjà pour cette période",
     });
   }
+
+  console.error(
+    "AJOUT RELEVE ERROR:",
+    err
+  );
+
+  return res.status(500).json({
+    message: "Erreur serveur",
+  });
+}
 };
 
 // ================= DELETE =================
@@ -197,8 +353,15 @@ exports.ocr = async (req, res) => {
     const text = req.file.buffer.toString("utf-8").toLowerCase();
 
     // ================= VALUE DETECTION =================
-    const valueMatch = text.match(/(\d+(\.\d+)?)/);
-    const detectedValue = valueMatch ? Number(valueMatch[0]) : 0;
+    const valueMatch =
+  text.match(/(\d+[.,]?\d*)/);
+
+const detectedValue =
+  valueMatch
+    ? Number(
+        valueMatch[0].replace(",", ".")
+      )
+    : 0;
 
     // ================= TYPE DETECTION =================
     let detectedType = "energie";

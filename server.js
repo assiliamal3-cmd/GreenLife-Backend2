@@ -115,7 +115,6 @@ app.use("/api/objectifs", require("./routes/objectifRoutes"));
 app.use("/api/recommandations", require("./routes/recommandationRoutes"));
 app.use("/api/stats", require("./routes/statsRoutes"));
 app.use("/api/alertes", require("./routes/alertes"));
-app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/rapports", require("./routes/rapportRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/admin/dashboard", require("./routes/adminDashboard"));

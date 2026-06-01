@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 
+
 // ================= JWT =================
 const generateToken = (user) => {
   return jwt.sign(
@@ -25,11 +26,11 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "Champs manquants" });
     }
 
-    // ❌ NO HASH HERE (schema will handle it)
     const newUser = await User.create({
       email,
       motDePasse: password,
     });
+
 
     const token = generateToken(newUser);
 

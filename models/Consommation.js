@@ -1,10 +1,6 @@
-// models/Consommation.js
-
 const mongoose = require("mongoose");
 
-const ConsommationSchema =
-new mongoose.Schema({
-
+const ConsommationSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -13,11 +9,7 @@ new mongoose.Schema({
 
   type: {
     type: String,
-    enum: [
-      "energie",
-      "eau",
-      "dechets",
-    ],
+    enum: ["energie", "eau", "dechets"],
     required: true,
   },
 
@@ -36,28 +28,41 @@ new mongoose.Schema({
     type: String,
     default: "",
   },
-    // ✅ AJOUTS
-    tailleFoyer: {
-      type: Number,
-      default: 1,
-    },
 
-    appareil: {
-      type: String,
-      default: "",
-    },
+  tailleFoyer: {
+    type: Number,
+    default: 1,
+  },
+
+  appareil: {
+    type: String,
+    default: "",
+  },
+
+  dateDebut: {
+    type: Date,
+    default: null,
+  },
+
+  dateFin: {
+    type: Date,
+    default: null,
+  },
+
+  repartitionMensuelle: {
+    type: Boolean,
+    default: false,
+  },
 
   date: {
     type: Date,
     default: Date.now,
   },
-
 }, {
   timestamps: true,
 });
 
-module.exports =
-mongoose.model(
+module.exports = mongoose.model(
   "Consommation",
   ConsommationSchema
 );

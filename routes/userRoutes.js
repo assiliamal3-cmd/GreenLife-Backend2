@@ -8,14 +8,9 @@ const protect =
 const {
   authorizeRoles,
 } = require("../middlewares/role");
-
+const upload = require("../middlewares/upload"); // multer
 const userController =
   require("../controllers/userController");
-
-console.log(
-  "controller keys:",
-  Object.keys(userController)
-);
 
 // ================= USER =================
 
@@ -53,6 +48,15 @@ router.get(
   userController.getHistorique
 );
 
+// ================= DELETE MY ACCOUNT =================
+// IMPORTANT: AVANT "/:id"
+
+router.delete(
+  "/delete",
+  protect,
+  userController.deleteMyAccount
+);
+
 // ================= PASSWORD RESET =================
 
 router.post(
@@ -75,7 +79,7 @@ router.get(
   userController.listerUtilisateurs
 );
 
-// ================= AJOUTER USER =================
+// AJOUTER USER
 router.post(
   "/ajouter",
   protect,
@@ -83,25 +87,27 @@ router.post(
   userController.ajouterUtilisateur
 );
 
-// ================= DELETE USER =================
-router.delete(
-  "/:id",
-  protect,
-  authorizeRoles("admin"),
-  userController.supprimerUtilisateur
-);
-
-// ================= UPDATE USER =================
+// UPDATE USER
 router.put(
   "/:id",
   protect,
   authorizeRoles("admin"),
   userController.modifierUtilisateur
 );
-router.put(
-  "/password",
+
+// DELETE USER ADMIN
+router.delete(
+  "/:id",
   protect,
-  userController.changePassword
+  authorizeRoles("admin"),
+  userController.supprimerUtilisateur
+);
+//photo
+router.post(
+  "/profile/photo",
+  protect,
+  upload.single("photo"),
+  userController.updatePhoto
 );
 
 module.exports = router;

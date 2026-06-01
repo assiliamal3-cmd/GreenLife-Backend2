@@ -1,24 +1,44 @@
 const Settings = require("../models/Settings");
 
-// ================= GET SETTINGS =================
 exports.getSettings = async (req, res) => {
   try {
-    let settings = await Settings.findOne();
+    const acceptLang = req.headers["accept-language"] || "fr";
+    const detectedLang = acceptLang.split(",")[0].split("-")[0];
 
-    // CREATE DEFAULT
+    const allowedLangs = ["fr", "en", "ar"];
+    const realLanguage = allowedLangs.includes(detectedLang)
+      ? detectedLang
+      : "fr";
+
+    let settings = await Settings.findOne({ isGlobal: true });
+
     if (!settings) {
       settings = await Settings.create({
+        isGlobal: true,
+        siteName: "GreenLife",
         email: "admin@greenlife.com",
+        language: realLanguage,
+        darkMode: false,
+        notifications: true,
+        aiEnabled: true,
+        currency: "TND",
+        timezone: "Africa/Tunis",
       });
+    } else {
+      settings.language = realLanguage;
+      await settings.save();
     }
 
-    res.json(settings);
+    return res.json({
+      success: true,
+      settings,
+    });
 
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      message: "Erreur chargement settings",
+  } catch (err) {
+    console.error("GET SETTINGS ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Erreur settings",
     });
   }
 };
@@ -26,49 +46,40 @@ exports.getSettings = async (req, res) => {
 // ================= UPDATE SETTINGS =================
 exports.updateSettings = async (req, res) => {
   try {
-    let settings = await Settings.findOne();
+    const normalizeBoolean = (v) => v === true || v === "true";
+
+    const updateData = {
+      ...(req.body.siteName !== undefined && { siteName: req.body.siteName }),
+      ...(req.body.email !== undefined && { email: req.body.email }),
+      ...(req.body.language !== undefined && { language: req.body.language }),
+      ...(req.body.currency !== undefined && { currency: req.body.currency }),
+      ...(req.body.timezone !== undefined && { timezone: req.body.timezone }),
+      ...(req.body.darkMode !== undefined && { darkMode: normalizeBoolean(req.body.darkMode) }),
+      ...(req.body.notifications !== undefined && { notifications: normalizeBoolean(req.body.notifications) }),
+      ...(req.body.aiEnabled !== undefined && { aiEnabled: normalizeBoolean(req.body.aiEnabled) }),
+    };
+
+    let settings = await Settings.findOne({ isGlobal: true });
 
     if (!settings) {
-      settings = new Settings();
+      settings = await Settings.create({
+        isGlobal: true,
+        ...updateData,
+      });
+    } else {
+      Object.assign(settings, updateData);
+      await settings.save();
     }
 
-    settings.siteName =
-      req.body.siteName ?? settings.siteName;
-
-    settings.email =
-      req.body.email ?? settings.email;
-
-    settings.language =
-      req.body.language ?? settings.language;
-
-    settings.darkMode =
-      req.body.darkMode ?? settings.darkMode;
-
-    settings.notifications =
-      req.body.notifications ??
-      settings.notifications;
-
-    settings.aiEnabled =
-      req.body.aiEnabled ??
-      settings.aiEnabled;
-
-    settings.currency =
-      req.body.currency ?? settings.currency;
-
-    settings.timezone =
-      req.body.timezone ?? settings.timezone;
-
-    await settings.save();
-
-    res.json({
+    return res.json({
       success: true,
       settings,
     });
 
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
+  } catch (err) {
+    console.error("UPDATE SETTINGS ERROR:", err);
+    return res.status(500).json({
+      success: false,
       message: "Erreur update settings",
     });
   }

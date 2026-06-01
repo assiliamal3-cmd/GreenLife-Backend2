@@ -3,20 +3,18 @@ const Consommation = require("../models/Consommation");
 
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 
 // ================= PROFILE =================
 exports.getProfile = async (req, res) => {
   try {
-    const user =
-      await User.findById(
-        req.user._id
-      ).select("-motDePasse");
+    const user = await User.findById(req.user._id).select("-motDePasse");
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message:
-          "Utilisateur introuvable",
+        message: "Utilisateur introuvable",
       });
     }
 
@@ -26,62 +24,141 @@ exports.getProfile = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-
     res.status(500).json({
       success: false,
-      message:
-        "Erreur serveur",
+      message: "Erreur serveur",
     });
   }
 };
-
 // ================= UPDATE PROFILE =================
-exports.updateProfile = async (
-  req,
-  res
-) => {
+exports.updateProfile = async (req, res) => {
   try {
-    const user =
-      await User.findById(
-        req.user._id
-      );
+    const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message:
-          "Utilisateur introuvable",
+        message: "Utilisateur introuvable",
       });
     }
 
-    user.nom =
-      req.body.nom ||
-      user.nom;
+    // ================= EMAIL =================
+    if (req.body.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    user.localisation =
-      req.body.localisation ||
-      user.localisation;
+      if (!emailRegex.test(req.body.email)) {
+        return res.status(400).json({
+          success: false,
+          message: "Email invalide",
+        });
+      }
 
+      // check email exist (important)
+      const emailExists = await User.findOne({
+        email: req.body.email,
+        _id: { $ne: user._id },
+      });
+
+      if (emailExists) {
+        return res.status(400).json({
+          success: false,
+          message: "Email déjà utilisé",
+        });
+      }
+
+      user.email = req.body.email;
+    }
+
+    // ================= NOM =================
+    if (req.body.nom) {
+      user.nom = req.body.nom.trim();
+    }
+
+    // ================= LOCALISATION =================
+    if (req.body.localisation) {
+      user.localisation = req.body.localisation;
+    }
+
+    // ================= PHOTO =================
     if (req.file) {
-      user.photo =
-        req.file.filename;
+      try {
+        if (user.photo) {
+          const oldPath = path.join(
+            __dirname,
+            "..",
+            "uploads",
+            user.photo
+          );
+
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+          }
+        }
+
+        user.photo = req.file.filename;
+      } catch (err) {
+        console.log("PHOTO ERROR:", err.message);
+      }
     }
 
     await user.save();
 
+    const updatedUser = await User.findById(user._id).select("-motDePasse");
+
     res.status(200).json({
       success: true,
-      message:
-        "✅ Profil mis à jour",
-      user,
+      message: "Profil mis à jour avec succès",
+      user: updatedUser,
     });
+
   } catch (err) {
-    console.error(err);
+    console.error("UPDATE PROFILE ERROR:", err);
 
     res.status(500).json({
       success: false,
-      message:
-        "Erreur serveur",
+      message: "Erreur serveur",
+    });
+  }
+};
+//
+exports.updatePhoto = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Utilisateur introuvable",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Aucune image envoyée",
+      });
+    }
+
+    // delete old photo
+    if (user.photo) {
+      const oldPath = path.join(__dirname, "..", "uploads", user.photo);
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+
+    user.photo = req.file.filename;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Photo mise à jour",
+      photo: user.photo,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      message: "Erreur serveur",
     });
   }
 };
@@ -490,6 +567,11 @@ exports.supprimerUtilisateur =
       }
 
       await user.deleteOne();
+      await notifyAdmins(
+  "🗑 Compte supprimé",
+  `${user.nom} (${user.email}) a été supprimé.`,
+  "warning"
+);
 
       res.status(200).json({
         success: true,
@@ -568,6 +650,43 @@ exports.changePassword = async (req, res) => {
 
     res.status(500).json({
       message: "Erreur serveur",
+    });
+  }
+};
+// ================= DELETE MY ACCOUNT =================
+exports.deleteMyAccount = async (
+  req,
+  res
+) => {
+  try {
+    const userId = req.user._id;
+
+    // supprimer consommations utilisateur
+    await Consommation.deleteMany({
+      user: userId,
+    });
+
+    // supprimer utilisateur
+    await User.findByIdAndDelete(
+      userId
+    );
+
+    res.status(200).json({
+      success: true,
+      message:
+        "Compte supprimé avec succès",
+    });
+
+  } catch (err) {
+    console.error(
+      "DELETE ACCOUNT ERROR:",
+      err
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        "Erreur suppression compte",
     });
   }
 };

@@ -17,14 +17,17 @@ exports.ajouterConsommation = async (req, res) => {
       });
     }
 
-    const {
-      type: consommationType,
-      valeur: rawValeur,
-      cout: rawCout,
-      notes,
-      tailleFoyer,
-      appareil,
-    } = req.body;
+   const {
+  type: consommationType,
+  valeur: rawValeur,
+  cout: rawCout,
+  notes,
+  tailleFoyer,
+  appareil,
+  dateDebut,
+  dateFin,
+  repartitionMensuelle,
+} = req.body;
 
     if (!consommationType) {
       return res.status(400).json({
@@ -32,37 +35,70 @@ exports.ajouterConsommation = async (req, res) => {
       });
     }
 
-    const consommation =
-      await Consommation.create({
+   const start = new Date(dateDebut);
+const end = new Date(dateFin);
 
-        user: req.user.id,
+if (!dateDebut || !dateFin) {
+  const consommation = await Consommation.create({
+    user: req.user.id,
+    type: consommationType.toLowerCase(),
+    valeur: Number(rawValeur) || 0,
+    cout: Number(rawCout) || 0,
+    notes: notes || "",
+    tailleFoyer: tailleFoyer ? parseInt(tailleFoyer) : 0,
+    appareil: appareil
+      ? appareil.split(",").map(a => a.trim()).filter(Boolean).join(",")
+      : "",
+    date: new Date(),
+  });
 
-        type:
-          consommationType.toLowerCase(),
+  return res.status(201).json({
+    message: "Consommation ajoutée ✅",
+    consommation,
+  });
+}
 
-        valeur:
-          Number(rawValeur) || 0,
+// ====================== DIFF DAYS ======================
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-        cout:
-          Number(rawCout) || 0,
+const daysCount =
+  Math.max(1, Math.round((end - start) / MS_PER_DAY) + 1);
 
-        notes: notes || "",
+const valuePerDay = Number(rawValeur) / daysCount;
+const costPerDay = (Number(rawCout) || 0) / daysCount;
 
-        tailleFoyer:
-          tailleFoyer !== undefined &&
-          tailleFoyer !== null &&
-          tailleFoyer !== ""
-            ? parseInt(tailleFoyer)
-            : 0,
+// ====================== CREATE DAILY RECORDS ======================
+const inserts = [];
 
-        appareil: appareil
-          ? appareil
-              .split(",")
-              .map((a) => a.trim())
-              .filter(Boolean)
-              .join(",")
-          : "",
-      });
+for (let i = 0; i < daysCount; i++) {
+  const day = new Date(start);
+  day.setDate(start.getDate() + i);
+
+  inserts.push({
+    user: req.user.id,
+    type: consommationType.toLowerCase(),
+    valeur: Number(valuePerDay.toFixed(2)),
+    cout: costPerDay,
+    notes: notes || "",
+    tailleFoyer: tailleFoyer ? parseInt(tailleFoyer) : 0,
+    appareil: appareil
+      ? appareil.split(",").map(a => a.trim()).filter(Boolean).join(",")
+      : "",
+    date: day, 
+    dateDebut,
+    dateFin,
+    repartitionMensuelle: true,
+  });
+}
+
+const consommations = await Consommation.insertMany(inserts);
+console.log("INSERTED COUNT:", consommations.length);
+
+return res.status(201).json({
+  message: "Consommation répartie par jour ✅",
+  totalJours: daysCount,
+  consommations,
+});
 
     // ======================================================
     // UPDATE ECO SCORE
@@ -167,13 +203,16 @@ exports.updateConsommation = async (req, res) => {
     }
 
     const {
-      type,
-      valeur,
-      cout,
-      notes,
-      tailleFoyer,
-      appareil,
-    } = req.body || {};
+  type,
+  valeur,
+  cout,
+  notes,
+  tailleFoyer,
+  appareil,
+  dateDebut,
+  dateFin,
+  repartitionMensuelle,
+} = req.body || {};
 
     if (type) {
       consommation.type =
@@ -203,6 +242,19 @@ exports.updateConsommation = async (req, res) => {
       consommation.appareil =
         appareil;
     }
+    if (dateDebut !== undefined) {
+  consommation.dateDebut = dateDebut || null;
+}
+
+if (dateFin !== undefined) {
+  consommation.dateFin = dateFin || null;
+}
+
+if (repartitionMensuelle !== undefined) {
+  consommation.repartitionMensuelle =
+    repartitionMensuelle === true ||
+    repartitionMensuelle === "true";
+}
 
     await consommation.save();
 
